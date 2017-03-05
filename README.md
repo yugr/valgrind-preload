@@ -13,7 +13,7 @@ but the latter has a few disadvantage:
   equivalent and replace it with Valgrind wrapper)
 
 The tool is in development but all major functionality is there
-(e.g. I was able to instrument complete build process of Debian packages via pbuilder).
+(e.g. I was able to [instrument complete build process of Debian packages via pbuilder](https://github.com/yugr/debian_pkg_test/tree/master/examples/valgrind-preload)).
 
 # Usage
 
