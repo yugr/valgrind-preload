@@ -1,0 +1,10 @@
+#!/bin/sh -eu
+
+# Copyright 2017 Yury Gribov
+# 
+# Use of this source code is governed by MIT license that can be
+# found in the LICENSE.txt file.
+
+D=$(dirname $0)
+D=$(readlink -f $D)
+LD_PRELOAD=$D/libpregrind.so${LD_PRELOAD:+:$LD_PRELOAD} $@
