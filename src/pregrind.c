@@ -174,6 +174,7 @@ static void maybe_init() {
 
     log_file = malloc(log_dir_len + name_len + 30);
     sprintf(log_file, "%s/%s.%d.%d", log_dir, name, (int)getuid(), (int)getpid()); // FIXME: snprintf
+    // TODO: delay opening the file until we have something to write? This needs to be MT-safe...
     log_fd = open(log_file, O_CREAT | O_WRONLY | O_APPEND, S_IRWXU | S_IRWXG | S_IRWXO);
     if(-1 == log_fd) {
       fprintf(stderr, PREFIX "open() of %s failed: %s", log_file, sys_errlist[errno]);
