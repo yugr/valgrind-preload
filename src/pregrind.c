@@ -33,7 +33,6 @@ int (*real_execvp)(const char *file, char *const argv[]);
 int (*real_execve)(const char *path, char *const argv[], char *const envp[]);
 int (*real_execvpe)(const char *file, char *const argv[], char *const envp[]); 
 
-int log_fd = STDERR_FILENO;
 char *vg_log_path_templ;
 char *log_file;
 int v;
@@ -42,11 +41,31 @@ int i_am_root;
 char *blacklist[64];
 volatile int is_initialized;
 
+static int get_log_fd() {
+  static int log_fd = -1;
+
+  if(!log_file)
+    return STDERR_FILENO;
+
+  if(log_fd > 0)
+    return log_fd;
+
+  // We delay opening the file until we have something to write.
+  // This is racy but this isn't a big deal (worst case the output will be corrupted).
+  log_fd = open(log_file, O_CREAT | O_WRONLY | O_APPEND, S_IRWXU | S_IRWXG | S_IRWXO);
+  if(-1 == log_fd) {
+    fprintf(stderr, PREFIX "open() of %s failed: %s\n", log_file, sys_errlist[errno]);
+    abort();
+  }
+
+  return log_fd;
+}
+
 // Async-safe print
 static void write_string(const char *s) {
   ssize_t written, rem = strlen(s);
   while(rem) {
-    written = write(log_fd, s, rem);
+    written = write(get_log_fd(), s, rem);
     assert(written >= 0);
     rem -= written;
     s += written;
@@ -132,7 +151,7 @@ static char *get_prog_name() {
 
   int nread = fread(s, 1, sizeof(s), p);
   if(nread < 0 || !memchr(s, 0, sizeof(s))) {
-    dprintf(log_fd, PREFIX "fread() from /proc/self/exe failed: %s\n", sys_errlist[errno]);
+    dprintf(get_log_fd(), PREFIX "fread() from /proc/self/exe failed: %s\n", sys_errlist[errno]);
     abort();
   }
 
@@ -174,14 +193,6 @@ static void maybe_init() {
 
     log_file = malloc(log_dir_len + name_len + 30);
     sprintf(log_file, "%s/%s.%d.%d", log_dir, name, (int)getuid(), (int)getpid()); // FIXME: snprintf
-    // TODO: delay opening the file until we have something to write? This needs to be MT-safe...
-    log_fd = open(log_file, O_CREAT | O_WRONLY | O_APPEND, S_IRWXU | S_IRWXG | S_IRWXO);
-    if(-1 == log_fd) {
-      fprintf(stderr, PREFIX "open() of %s failed: %s", log_file, sys_errlist[errno]);
-//fprintf(stderr, PREFIX "uid=%d, gid=%d\n", getuid(), getgid());
-//struct stat perm; stat(log_file, &perm); fprintf(stderr, PREFIX "owner=%d, group=%d\n", perm.st_uid, perm.st_gid);
-      abort();
-    }
 
     if(log_dir != log_dir_rel)
       free(log_dir);
@@ -196,7 +207,7 @@ static void maybe_init() {
   if(blacklist_name) {
     FILE *p = fopen(blacklist_name, "rb");
     if(!p) {
-      dprintf(log_fd, PREFIX "failed to open blacklist file %s\n", blacklist_name);
+      dprintf(get_log_fd(), PREFIX "failed to open blacklist file %s\n", blacklist_name);
       abort();
     }
 
@@ -208,7 +219,7 @@ static void maybe_init() {
         *nl = 0;
 
       if(i >= sizeof(blacklist) / sizeof(blacklist[0])) {
-        dprintf(log_fd, PREFIX "failed to read patterns from %s: too many\n", blacklist_name);
+        dprintf(get_log_fd(), PREFIX "failed to read patterns from %s: too many\n", blacklist_name);
         abort();
       }
 
@@ -235,7 +246,7 @@ static void maybe_init() {
   i_am_root = getuid() == 0;
 
   if(v)
-    dprintf(log_fd, PREFIX "initialized: v=%d, vg_log_path_templ=%s, log_file=%s, i_am_root=%d\n", v, vg_log_path_templ ? vg_log_path_templ : "(stderr)", log_file, i_am_root);
+    dprintf(get_log_fd(), PREFIX "initialized: v=%d, vg_log_path_templ=%s, log_file=%s, i_am_root=%d\n", v, vg_log_path_templ ? vg_log_path_templ : "(stderr)", log_file, i_am_root);
 
   // TODO: membar
   asm("");
@@ -254,29 +265,33 @@ static char **init_valgrind_argv(char * const *argv) {
   size_t max_args = PAGE_SIZE / sizeof(char *);
 
   new_args[0] = "/usr/bin/valgrind";
-  new_args += 1;
-  max_args -= 1;
+  ++new_args;
+  --max_args;
 
   // Avoid "cannot create shared_mem file /tmp/vgdb-pipe-shared-mem-vgdb..." errors
   // when running under debign_pkg_test.
   // FIXME: this should be fixed in debign_pkg_test harness.
   new_args[0] = "--vgdb=no";
-  new_args += 1;
-  max_args -= 1;
+  ++new_args;
+  --max_args;
+
+  new_args[0] = "--track-origins=yes";
+  ++new_args;
+  --max_args;
 
   if(vg_log_path_templ) {
     char *name = Basename(argv[0]);
     size_t name_len = strlen(name);
 
-    // TODO: --track-origins=yes --leak-check=full --showleak-kinds=definite ?
+    // TODO: --leak-check=full --showleak-kinds=definite ?
     size_t templ_len = strlen(vg_log_path_templ);
     char *out = Malloc(templ_len + name_len + 20);
     sprintf(out, "--log-file=%s%s.%%p", vg_log_path_templ, name);  // Valgrind understands %%p  // FIXME: snprintf
 
     new_args[0] = out;
 
-    new_args += 1;
-    max_args -= 1;
+    ++new_args;
+    --max_args;
   }
 
   while(argv[0]) {
@@ -288,6 +303,38 @@ static char **init_valgrind_argv(char * const *argv) {
   }
 
   return (char **)buf;
+}
+
+static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz) {
+  const char *path = getenv("PATH");
+  if(!path)
+    return 0;
+
+  struct stat perm;
+  do {
+    char *next = strchr(path, ':');
+
+    int is_empty = (next && next == path + 1) || (!next && !path[0]);
+    int needed;
+    if(is_empty) {
+      needed = snprintf(buf, buf_sz, "%s", file);
+    } else {
+      int len = next ? next - path : (int)strlen(path);
+      needed = snprintf(buf, buf_sz, "%.*s/%s", len, path, file);
+    }
+
+    if(needed < 0 || (size_t)needed >= buf_sz) {
+      Printf(PREFIX "failed to find file %s in path: string too long\n", file);
+      return 0;
+    }
+
+    if(0 != stat(buf, &perm))
+      return buf;
+
+    path = next ? next + 1 : 0;
+  } while(path);
+
+  return 0;
 }
 
 static int can_instrument(const char *arg0, char *const *argv) {
@@ -304,11 +351,20 @@ static int can_instrument(const char *arg0, char *const *argv) {
   size_t i;
   for(i = 0; i < sizeof(blacklist) / sizeof(blacklist[0]) && blacklist[i]; ++i) {
     if(Fnmatch(blacklist[i], arg0)) {
-//fprintf(stderr, "checking '%s' against '%s'\n", arg0, blacklist[i]);
       if(v)
         Printf(PREFIX "not instrumenting %s: blacklisted\n", arg0);
       return 0;
     }
+  }
+
+  char buf[256];
+  if(!strchr(arg0, '/')) {
+    const char *path = find_file_in_path(arg0, buf, sizeof(buf));
+    if(!path) {
+      Printf(PREFIX "not instrumenting %s: failed to find file in path\n", arg0);
+      return 0;
+    }
+    arg0 = path;
   }
 
   struct stat perm;
@@ -320,13 +376,10 @@ static int can_instrument(const char *arg0, char *const *argv) {
   }
 
   // Avoid calling setuids as VG can't instrument them
-  if(!i_am_root
-      && arg0[0] == '/') {  // TODO: otherwise manually find file in PATH
-    if(perm.st_mode & (S_ISUID | S_ISGID | S_ISVTX)) {
-      if(v)
-        Printf(PREFIX "not instrumenting %s: setuid\n", arg0);
-      return 0;
-    }
+  if(!i_am_root && (perm.st_mode & (S_ISUID | S_ISGID | S_ISVTX))) {
+    if(v)
+      Printf(PREFIX "not instrumenting %s: setuid\n", arg0);
+    return 0;
   }
 
   return 1;
