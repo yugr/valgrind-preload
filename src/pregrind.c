@@ -348,15 +348,6 @@ static int can_instrument(const char *arg0, char *const *argv) {
     return 0;
   }
 
-  size_t i;
-  for(i = 0; i < sizeof(blacklist) / sizeof(blacklist[0]) && blacklist[i]; ++i) {
-    if(Fnmatch(blacklist[i], arg0)) {
-      if(v)
-        Printf(PREFIX "not instrumenting %s: blacklisted\n", arg0);
-      return 0;
-    }
-  }
-
   char buf[256];
   if(!strchr(arg0, '/')) {
     const char *path = find_file_in_path(arg0, buf, sizeof(buf));
@@ -365,6 +356,15 @@ static int can_instrument(const char *arg0, char *const *argv) {
       return 0;
     }
     arg0 = path;
+  }
+
+  size_t i;
+  for(i = 0; i < sizeof(blacklist) / sizeof(blacklist[0]) && blacklist[i]; ++i) {
+    if(Fnmatch(blacklist[i], arg0)) {
+      if(v)
+        Printf(PREFIX "not instrumenting %s: blacklisted\n", arg0);
+      return 0;
+    }
   }
 
   struct stat perm;
