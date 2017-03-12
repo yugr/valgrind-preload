@@ -33,8 +33,9 @@ int (*real_execvp)(const char *file, char *const argv[]);
 int (*real_execve)(const char *path, char *const argv[], char *const envp[]);
 int (*real_execvpe)(const char *file, char *const argv[], char *const envp[]); 
 
-char *vg_log_path_templ;
-char *log_file;
+const char *vg_flags[128];
+const char *vg_log_path_templ;
+const char *log_file;
 int v;
 int disable;
 int i_am_root;
@@ -166,7 +167,33 @@ static void maybe_init() {
     v = atoi(verbose);
   }
 
-  // TODO: PREGRIND_FLAGS (for --track-origins=yes, etc.)
+  const char *flags = getenv("PREGRIND_FLAGS");
+  if(flags) {
+    flags = strdup(flags);
+
+    size_t i = 0;
+
+    while(flags) {
+      for(; *flags == ' '; ++flags)
+
+      if(!*flags)
+        break;
+
+      char *next = strchr(flags, ' ');
+      if(next) {
+        *next = 0;
+        ++next;
+      }
+
+      assert(i < sizeof(vg_flags) / sizeof(vg_flags[0]) - 1);
+      vg_flags[i++] = flags;
+
+      flags = next;
+    }
+
+    vg_flags[i] = 0;
+  }
+
   char *log_dir_rel = getenv("PREGRIND_LOG_PATH");
   if(log_dir_rel) {
     char *log_dir = log_dir_rel;
@@ -189,10 +216,10 @@ static void maybe_init() {
 
     size_t log_dir_len = strlen(log_dir);
     vg_log_path_templ = malloc(log_dir_len + 20);
-    sprintf(vg_log_path_templ, "%s/vg.%d.", log_dir, (int)getuid());  // FIXME: snprintf
+    sprintf((char *)vg_log_path_templ, "%s/vg.%d.", log_dir, (int)getuid());  // FIXME: snprintf
 
     log_file = malloc(log_dir_len + name_len + 30);
-    sprintf(log_file, "%s/%s.%d.%d", log_dir, name, (int)getuid(), (int)getpid()); // FIXME: snprintf
+    sprintf((char *)log_file, "%s/%s.%d.%d", log_dir, name, (int)getuid(), (int)getpid()); // FIXME: snprintf
 
     if(log_dir != log_dir_rel)
       free(log_dir);
@@ -223,7 +250,6 @@ static void maybe_init() {
         abort();
       }
 
-//fprintf(stderr, "read from blacklist file: '%s'\n", s);
       blacklist[i++] = strdup(s);
     }
 
@@ -261,21 +287,10 @@ static void dummy() {
 
 static char **init_valgrind_argv(char * const *argv) {
   void *buf = Malloc(PAGE_SIZE);
-  char **new_args = buf;
+  const char **new_args = buf;
   size_t max_args = PAGE_SIZE / sizeof(char *);
 
   new_args[0] = "/usr/bin/valgrind";
-  ++new_args;
-  --max_args;
-
-  // Avoid "cannot create shared_mem file /tmp/vgdb-pipe-shared-mem-vgdb..." errors
-  // when running under debign_pkg_test.
-  // FIXME: this should be fixed in debign_pkg_test harness.
-  new_args[0] = "--vgdb=no";
-  ++new_args;
-  --max_args;
-
-  new_args[0] = "--track-origins=yes";
   ++new_args;
   --max_args;
 
@@ -289,13 +304,20 @@ static char **init_valgrind_argv(char * const *argv) {
     sprintf(out, "--log-file=%s%s.%%p", vg_log_path_templ, name);  // Valgrind understands %%p  // FIXME: snprintf
 
     new_args[0] = out;
+    ++new_args;
+    --max_args;
+  }
 
+  const char **vg_flag;
+  for(vg_flag = vg_flags; *vg_flag; ++vg_flag) {
+    assert(max_args);
+    new_args[0] = *vg_flag;
     ++new_args;
     --max_args;
   }
 
   while(argv[0]) {
-    assert(max_args > 0);
+    assert(max_args);
     new_args[0] = argv[0];
     ++new_args;
     ++argv;
