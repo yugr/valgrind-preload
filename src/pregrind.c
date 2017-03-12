@@ -350,7 +350,7 @@ static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz)
       return 0;
     }
 
-    if(0 != stat(buf, &perm))
+    if(0 == stat(buf, &perm))
       return buf;
 
     path = next ? next + 1 : 0;
