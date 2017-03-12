@@ -34,6 +34,14 @@ Note that in this mode `libpregrind.so` will be preloaded to
 _all newly started processes_ so any malfunction may permanently break your
 system. It's thus highly recommended to only do this in a chroot or VM.
 
+Library can be customized through environment variables:
+* PREGRIND\_LOG\_PATH - log to files inside this directory, rather than to stderr
+* PREGRIND\_FLAGS - additional flags for Valgrind (e.g. `--track-origins=yes`)
+* PREGRIND\_VERBOSE - print diagnostic info
+* PREGRIND\_DISABLE - disable instrumentation
+* PREGRIND\_BLACKLIST - name of file with wildcard patterns of files
+  which should not be instrumented
+
 # Build
 
 To build the tool, simply run make from top directory.
