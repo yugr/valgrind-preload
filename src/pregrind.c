@@ -298,7 +298,6 @@ static char **init_valgrind_argv(char * const *argv) {
     char *name = Basename(argv[0]);
     size_t name_len = strlen(name);
 
-    // TODO: --leak-check=full --showleak-kinds=definite ?
     size_t templ_len = strlen(vg_log_path_templ);
     char *out = Malloc(templ_len + name_len + 20);
     sprintf(out, "--log-file=%s%s.%%p", vg_log_path_templ, name);  // Valgrind understands %%p  // FIXME: snprintf
@@ -320,8 +319,8 @@ static char **init_valgrind_argv(char * const *argv) {
     assert(max_args);
     new_args[0] = argv[0];
     ++new_args;
-    ++argv;
     --max_args;
+    ++argv;
   }
 
   return (char **)buf;
