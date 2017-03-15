@@ -67,7 +67,7 @@ static void write_string(const char *s) {
   ssize_t written, rem = strlen(s);
   while(rem) {
     written = write(get_log_fd(), s, rem);
-    assert(written >= 0);
+    assert(written >= 0 && "write() failed");
     rem -= written;
     s += written;
   }
@@ -133,7 +133,7 @@ static char **va_list_to_argv(va_list ap, const char *arg0) {
   --max_args;
 
   while(arg0) {
-    assert(max_args > 0);
+    assert(max_args > 0 && "Too many arguments");
     arg0 = va_arg(ap, const char *);
     args[0] = arg0;
     ++args;
@@ -145,7 +145,7 @@ static char **va_list_to_argv(va_list ap, const char *arg0) {
 
 static char *get_prog_name() {
   FILE *p = fopen("/proc/self/cmdline", "rb");
-  assert(p);
+  assert(p && "Failed to read /proc");
 
   static char s[128];
   memset(s, 0, sizeof(s));
@@ -160,7 +160,7 @@ static char *get_prog_name() {
 }
 
 static void maybe_init() {
-  assert(!is_initialized);
+  assert(!is_initialized && "Init called twice");
 
   const char *verbose = getenv("PREGRIND_VERBOSE");
   if(verbose) {
@@ -185,7 +185,7 @@ static void maybe_init() {
         ++next;
       }
 
-      assert(i < sizeof(vg_flags) / sizeof(vg_flags[0]) - 1);
+      assert(i < sizeof(vg_flags) / sizeof(vg_flags[0]) - 1 && "Too many flags");
       vg_flags[i++] = flags;
 
       flags = next;
@@ -258,7 +258,7 @@ static void maybe_init() {
 
 #define INIT_REAL(f) do { \
     real ## _ ## f = (typeof(real ## _ ## f))dlsym(RTLD_NEXT, #f); \
-    assert(real ## _ ## f); \
+    assert(real ## _ ## f && "Failed to locate true exec"); \
   } while(0)
 
   INIT_REAL(execl);
@@ -309,14 +309,14 @@ static char **init_valgrind_argv(char * const *argv) {
 
   const char **vg_flag;
   for(vg_flag = vg_flags; *vg_flag; ++vg_flag) {
-    assert(max_args);
+    assert(max_args && "Too many flags");
     new_args[0] = *vg_flag;
     ++new_args;
     --max_args;
   }
 
   while(argv[0]) {
-    assert(max_args);
+    assert(max_args && "Too many arguments");
     new_args[0] = argv[0];
     ++new_args;
     --max_args;
