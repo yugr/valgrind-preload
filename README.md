@@ -48,7 +48,7 @@ To build the tool, simply run make from top directory.
 
 # Trophies
 
-* [acl: Uninitialized value in lt-setfacl](http://savannah.nongnu.org/bugs/index.php?50566)
+* [acl: Uninitialized value in lt-setfacl](http://savannah.nongnu.org/bugs/index.php?50566) (fixed)
 
 # Known issues
 
