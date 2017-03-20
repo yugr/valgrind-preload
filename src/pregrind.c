@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -159,6 +160,24 @@ static char *get_prog_name() {
   return Basename(s);
 }
 
+static char *trim_whites(char *s) {
+  for(; isspace(*s); ++s);
+
+  char *end = 0, *p;
+  for(p = s; *p; ++p) {
+    int space = isspace(*p);
+    if(end && !space)
+      end = 0;
+    else if(!end && space)
+      end = p;
+  }
+
+  if(end)
+    *end = 0;
+
+  return s;
+}
+
 static void maybe_init() {
   assert(!is_initialized && "Init called twice");
 
@@ -238,9 +257,11 @@ static void maybe_init() {
       abort();
     }
 
-    char s[128];
+    char buf[128];
     size_t i = 0;
-    while(fgets(s, sizeof(s), p)) {
+    while(fgets(buf, sizeof(buf), p)) {
+      char *s = buf;
+
       char *nl = strchr(s, '\n');
       if(nl)
         *nl = 0;
@@ -250,7 +271,15 @@ static void maybe_init() {
         abort();
       }
 
-      blacklist[i++] = strdup(s);
+      // Strip comments
+      char *comment = strchr(s, '#');
+      if(comment)
+        *comment = 0;
+
+      s = trim_whites(s);
+
+      if(*s)
+        blacklist[i++] = strdup(s);
     }
 
     fclose(p);
