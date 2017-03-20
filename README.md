@@ -12,8 +12,9 @@ but fixes few disadvantages:
 * can easily be enabled for the whole distro or chroot via `ld.so.preload`
   (no need to search for `init` and replace it with a wrapper)
 
-The tool is in development but all major functionality is there
-(e.g. I was able to [instrument complete build process of Debian packages via pbuilder](https://github.com/yugr/debian_pkg_test/tree/master/examples/valgrind-preload)).
+The tool seems to be pretty stable now, e.g. I was able to
+[instrument complete Debian package builds](https://github.com/yugr/debian_pkg_test/tree/master/examples/valgrind-preload)
+and even found [several new errors](https://github.com/yugr/valgrind-preload#trophies).
 
 # Usage
 
@@ -49,6 +50,7 @@ To build the tool, simply run make from top directory.
 # Trophies
 
 * [acl: Uninitialized value in lt-setfacl](http://savannah.nongnu.org/bugs/index.php?50566) (fixed)
+* [libsndfile: Buffer overflow in string\_test](https://github.com/erikd/libsndfile/issues/208)
 
 # Known issues
 
