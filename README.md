@@ -51,6 +51,7 @@ To build the tool, simply run make from top directory.
 
 * [acl: Uninitialized value in lt-setfacl](http://savannah.nongnu.org/bugs/index.php?50566) (fixed)
 * [libsndfile: Buffer overflow in string\_test](https://github.com/erikd/libsndfile/issues/208)
+* [libsndfile: Uninitialized format in error\_test](https://github.com/erikd/libsndfile/issues/209)
 
 # Known issues
 
