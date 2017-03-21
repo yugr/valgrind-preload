@@ -50,8 +50,9 @@ To build the tool, simply run make from top directory.
 # Trophies
 
 * [acl: Uninitialized value in lt-setfacl](http://savannah.nongnu.org/bugs/index.php?50566) (fixed)
-* [libsndfile: Buffer overflow in string\_test](https://github.com/erikd/libsndfile/issues/208)
-* [libsndfile: Uninitialized format in error\_test](https://github.com/erikd/libsndfile/issues/209)
+* [libsndfile: Uninitialized format in error\_test](https://github.com/erikd/libsndfile/issues/209) (fixed)
+* [libsndfile: Buffer overflow in string\_test](https://github.com/erikd/libsndfile/issues/208) (was already fixed in upstream)
+* [docbook-to-man: Memcpy parameter overlap in docbook-to-man](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=858389)
 
 # Known issues
 
