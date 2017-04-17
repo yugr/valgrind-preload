@@ -495,8 +495,6 @@ EXPORT int execle(const char *path, const char *arg, ...) {
   return exec_worker(path, args, /*file_or_path*/ 0, /*has_envp*/ 1, e);
 }
 
-// TODO: execlpe?
-
 EXPORT int execv(const char *path, char *const argv[]) {
   if(v)
     Printf(PREFIX "intercepted execv: %s\n", path);
@@ -520,3 +518,6 @@ EXPORT int execvpe(const char *file, char *const argv[], char *const envp[]) {
     Printf(PREFIX "intercepted execvpe: %s\n", file);
   return exec_worker(file, argv, /*file_or_path*/ 1, /*has_envp*/ 1, envp);
 }
+
+// TODO: system
+// TODO: execlpe?
