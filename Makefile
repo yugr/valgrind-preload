@@ -13,13 +13,13 @@ $(shell mkdir -p bin)
 
 all: bin/libpregrind.so bin/pregrind
 
-bin/pregrind: scripts/pregrind
+bin/pregrind: scripts/pregrind Makefile
 	cp $^ $@  # TODO: install
 
-bin/libpregrind.so: bin/pregrind.o
+bin/libpregrind.so: bin/pregrind.o Makefile
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-bin/%.o: src/%.c
+bin/%.o: src/%.c Makefile
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $^
 
 clean:
