@@ -1,3 +1,5 @@
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/yugr/valgrind-preload.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/yugr/valgrind-preload/alerts/)
+
 # What's this?
 
 Valgrind-preload (AKA Pregrind) is a simple `LD_PRELOAD`-able library
