@@ -104,11 +104,11 @@ static char *get_prog_name() {
 static char *trim_whites(char *s) {
   for(; isspace(*s); ++s);
 
-  char *end = 0, *p;
+  char *end = NULL, *p;
   for(p = s; *p; ++p) {
     int space = isspace(*p);
     if(end && !space)
-      end = 0;
+      end = NULL;
     else if(!end && space)
       end = p;
   }
@@ -151,7 +151,7 @@ static void maybe_init() {
       flags = next;
     }
 
-    vg_flags[i] = 0;
+    vg_flags[i] = NULL;
   }
 
   char *log_dir_rel = getenv("PREGRIND_LOG_PATH");
