@@ -543,6 +543,5 @@ EXPORT int execvpe(const char *file, char *const argv[], char *const envp[]) {
   return exec_worker(file, argv, /*file_or_path*/ 1, /*has_envp*/ 1, envp);
 }
 
-// TODO: system
 // TODO: execlpe
 // TODO: posix_spawn, posix_spawnp
