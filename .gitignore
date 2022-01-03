@@ -5,9 +5,12 @@ bin
 .gdb_history
 
 # Vim files
-.*.swp
+.*swp
 
 # Test files
 parent
 child
 test.log
+*.gcda
+*.gcno
+*.gcov

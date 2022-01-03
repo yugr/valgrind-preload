@@ -19,10 +19,14 @@ fi
 
 CFLAGS='-g -O2 -Wall -Wextra -Werror -shared -fPIC'
 
+if test -n "${COVERAGE:-}"; then
+  CFLAGS="$CFLAGS --coverage -DNDEBUG"
+fi
+
 ROOT=$PWD/../..
 
-${CC:-gcc} parent.c -o parent
-${CC:-gcc} child.c -o child
+${CC:-gcc} --coverage parent.c -o parent
+${CC:-gcc} --coverage child.c -o child
 
 export PREGRIND_FLAGS='-q --error-exitcode=1'
 
