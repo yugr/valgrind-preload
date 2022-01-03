@@ -1,3 +1,7 @@
+# TODO:
+# - sanitizers
+# - Coverity
+
 name: CI
 on:
   push:
