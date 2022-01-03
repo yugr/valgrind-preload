@@ -32,7 +32,7 @@ int (*real_execle)(const char *path, const char *arg, ...);
 int (*real_execv)(const char *path, char *const argv[]);
 int (*real_execvp)(const char *file, char *const argv[]);
 int (*real_execve)(const char *path, char *const argv[], char *const envp[]);
-int (*real_execvpe)(const char *file, char *const argv[], char *const envp[]); 
+int (*real_execvpe)(const char *file, char *const argv[], char *const envp[]);
 
 const char *vg_flags[128];
 const char *vg_log_path_templ;
@@ -81,15 +81,25 @@ static void write_string(const char *s) {
     write_string(_buf); \
   } while(0)
 
-// Async-safe malloc (map isn't officially async-safe but most probably is)
+// Async-safe malloc (mmap(2) isn't officially async-safe but most probably is)
 static void *Malloc(size_t n) {
-  n = (n + PAGE_SIZE - 1) & ~(uintptr_t)(PAGE_SIZE - 1);
+  n = (n + sizeof(size_t) + PAGE_SIZE - 1) & ~(uintptr_t)(PAGE_SIZE - 1);
   void *ret = mmap(0, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (!ret || ret == (void *)-1) {
     Printf(PREFIX "Malloc() failed to allocate %zd bytes: %s\n", n, sys_errlist[errno]);
     abort();
   }
-  return ret;
+  *(size_t *)ret = n;
+  return (size_t *)ret + 1;
+}
+
+static void Free(void *p) {
+  void *buf = (size_t *)p - 1;
+  size_t size = *(size_t *)buf;
+  if (0 != munmap(buf, size)) {
+    Printf(PREFIX "Free() failed to unmap memory at 0x%p (size %zd)\n", p, size);
+    abort();
+  }
 }
 
 static char *Basename(char *f) {
@@ -124,10 +134,13 @@ static int Fnmatch(const char *p, const char *s) {
   abort();
 }
 
+// Reserve space for size and at least one trailing nullptr
+#define GET_EFFECTIVE_SIZE(size) ((size) - sizeof(size_t) - sizeof (char *))
+
 static char **va_list_to_argv(va_list ap, const char *arg0) {
   void *buf = Malloc(PAGE_SIZE);
   const char **args = (const char **)buf;
-  size_t max_args = PAGE_SIZE / sizeof(const char *);
+  size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE) / sizeof(const char *);
 
   args[0] = arg0;
   ++args;
@@ -286,8 +299,8 @@ static void maybe_init() {
   }
 
 #define INIT_REAL(f) do { \
-    real ## _ ## f = (typeof(real ## _ ## f))dlsym(RTLD_NEXT, #f); \
-    assert(real ## _ ## f && "Failed to locate true exec"); \
+    real_ ## f = (typeof(real_ ## f))dlsym(RTLD_NEXT, #f); \
+    assert(real_ ## f && "Failed to locate true exec"); \
   } while(0)
 
   INIT_REAL(execl);
@@ -297,6 +310,8 @@ static void maybe_init() {
   INIT_REAL(execvp);
   INIT_REAL(execve);
   INIT_REAL(execvpe);
+
+#undef INIT_REAL
 
   i_am_root = getuid() == 0;
 
@@ -317,7 +332,7 @@ static void dummy() {
 static char **init_valgrind_argv(char * const *argv) {
   void *buf = Malloc(PAGE_SIZE);
   const char **new_args = buf;
-  size_t max_args = PAGE_SIZE / sizeof(char *);
+  size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE) / sizeof(char *);
 
   new_args[0] = "/usr/bin/valgrind";
   ++new_args;
@@ -334,22 +349,21 @@ static char **init_valgrind_argv(char * const *argv) {
     new_args[0] = out;
     ++new_args;
     --max_args;
+
   }
 
   const char **vg_flag;
-  for(vg_flag = vg_flags; *vg_flag; ++vg_flag) {
+  for(vg_flag = vg_flags; *vg_flag; ++vg_flag, ++new_args, --max_args) {
     assert(max_args && "Too many flags");
     new_args[0] = *vg_flag;
-    ++new_args;
-    --max_args;
   }
 
-  while(argv[0]) {
+  for(; argv[0]; ++new_args, --max_args, ++argv) {
     assert(max_args && "Too many arguments");
-    new_args[0] = argv[0];
-    ++new_args;
-    --max_args;
-    ++argv;
+
+    char *argv0 = Malloc(strlen(argv[0]) + 1);
+    strcpy(argv0, argv[0]);
+    new_args[0] = argv0;
   }
 
   return (char **)buf;
@@ -388,6 +402,9 @@ static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz)
 }
 
 static int can_instrument(const char *arg0, char *const *argv) {
+  if(!is_initialized)  // If initializer hasn't been called, we can't do much (we have to be async-safe)
+    return 0;
+
   if(disable)
     return 0;
 
@@ -436,8 +453,7 @@ static int can_instrument(const char *arg0, char *const *argv) {
 }
 
 static int exec_worker(const char *arg0, char *const *argv, int file_or_path, int has_envp, char *const *envp) {
-  if(!is_initialized  // If initializer hasn't been called, we can't do much (we have to be async-safe)
-      || !can_instrument(arg0, argv))
+  if(!can_instrument(arg0, argv))
     return has_envp && file_or_path ? real_execvpe(arg0, argv, envp)
       : has_envp && !file_or_path ? real_execve(arg0, argv, envp)
       : !has_envp && file_or_path ? real_execvp(arg0, argv)
@@ -455,9 +471,17 @@ static int exec_worker(const char *arg0, char *const *argv, int file_or_path, in
     write_string("\n");
   }
 
-  return has_envp
+  int retcode = has_envp
     ? real_execve(new_argv[0], new_argv, envp)
     : real_execv(new_argv[0], new_argv);
+
+  if (0 != retcode) {
+    for (size_t i = 0; new_argv[i]; ++i)
+      Free(new_argv[i]);
+    Free(new_argv);
+  }
+
+  return retcode;
 }
 
 EXPORT int execl(const char *path, const char *arg, ...) {
