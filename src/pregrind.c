@@ -5,6 +5,9 @@
  * found in the LICENSE.txt file.
  */
 
+#include "async_safe.h"
+#include "common.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,14 +20,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dlfcn.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
-
-#define PAGE_SIZE (4 * 1024)
-
-#define EXPORT __attribute__((visibility("default")))
-
-#define PREFIX "libpregrind.so: "
 
 int (*real_execl)(const char *path, const char *arg, ...);
 int (*real_execlp)(const char *file, const char *arg, ...);
@@ -63,90 +59,14 @@ static int get_log_fd() {
   return log_fd;
 }
 
-// Async-safe print
-static void safe_puts(const char *s) {
-  ssize_t written, rem = strlen(s);
-  while(rem) {
-    written = write(get_log_fd(), s, rem);
-    assert(written >= 0 && "write() failed");
-    rem -= written;
-    s += written;
-  }
-}
-
-// Async-safe printf (snprintf isn't officially async-safe but should be if not using floats)
-#define safe_printf(fmt, ...) do { \
-    char _buf[512]; \
-    snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
-    safe_puts(_buf); \
-  } while(0)
-
-typedef struct {
-  size_t size;
-} MemControlBlock;
-
-#define AS_BLOCK(ptr) ((MemControlBlock *)(ptr))
-#define RAW2USER(ptr) ((void *)(AS_BLOCK(ptr) + 1))
-#define USER2RAW(ptr) ((void *)(AS_BLOCK(ptr) - 1))
-
-// Async-safe malloc (mmap(2) isn't officially async-safe but most probably is)
-static void *safe_malloc(size_t n) {
-  n = (n + sizeof(MemControlBlock) + PAGE_SIZE - 1) & ~(uintptr_t)(PAGE_SIZE - 1);
-  void *ret = mmap(0, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (!ret || ret == MAP_FAILED) {
-    safe_printf(PREFIX "safe_malloc() failed to allocate %zd bytes: %s\n", n, sys_errlist[errno]);
-    abort();
-  }
-  AS_BLOCK(ret)->size = n;
-  return RAW2USER(ret);
-}
-
-static void safe_free(void *p) {
-  void *buf = USER2RAW(p);
-  size_t size = AS_BLOCK(buf)->size;
-  if (0 != munmap(buf, size)) {
-    safe_printf(PREFIX "safe_free() failed to unmap memory at 0x%p (size %zd)\n", p, size);
-    abort();
-  }
-}
-
-static char *safe_basename(char *f) {
-  char *sep = strrchr(f, '/');
-  return sep ? sep + 1 : f;
-}
-
-// Not very efficient but enough for our simple usecase
-static int safe_fnmatch(const char *p, const char *s) {
-  if(*p == 0 || *s == 0)
-    return *p == *s;
-
-  switch(*p) {
-  case '?':
-    return *s && safe_fnmatch(p + 1, s + 1);
-  case '*':
-    if(p[1] == 0)
-      return 1;
-    else if(p[1] == '*')
-      return safe_fnmatch(p + 1, s);
-    else {
-      size_t i;
-      for(i = 0; s[i]; ++i)
-        if(p[1] == s[i] && safe_fnmatch(p + 2, s + i + 1))
-          return 1;
-      return 0;
-    }
-  default:
-    return *p == *s && safe_fnmatch(p + 1, s + 1);
-  }
-
-  abort();
-}
+#define safe_printf(fmt, ...) safe_fprintf(get_log_fd(), fmt, ##__VA_ARGS__)
+#define safe_puts(s) safe_fputs(get_log_fd(), s)
 
 // Reserve space for size and at least one trailing nullptr
 #define GET_EFFECTIVE_SIZE(size) ((size) - sizeof(MemControlBlock) - sizeof (char *))
 
 static char **va_list_to_argv(va_list ap, const char *arg0) {
-  void *buf = safe_malloc(PAGE_SIZE >> 1);
+  void *buf = safe_malloc(PAGE_SIZE >> 1, get_log_fd());
   const char **args = (const char **)buf;
   size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE >> 1) / sizeof(const char *);
 
@@ -338,7 +258,7 @@ static void dummy() {
 }
 
 static char **init_valgrind_argv(char * const *argv) {
-  void *buf = safe_malloc(PAGE_SIZE >> 1);
+  void *buf = safe_malloc(PAGE_SIZE >> 1, get_log_fd());
   const char **new_args = buf;
   size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE >> 1) / sizeof(char *);
 
@@ -351,7 +271,7 @@ static char **init_valgrind_argv(char * const *argv) {
     size_t name_len = strlen(name);
 
     size_t templ_len = strlen(vg_log_path_templ);
-    char *out = safe_malloc(templ_len + name_len + 20);
+    char *out = safe_malloc(templ_len + name_len + 20, get_log_fd());
     sprintf(out, "--log-file=%s%s.%%p", vg_log_path_templ, name);  // Valgrind understands %%p  // FIXME: snprintf
 
     new_args[0] = out;
@@ -369,7 +289,7 @@ static char **init_valgrind_argv(char * const *argv) {
   for(; argv[0]; ++new_args, --max_args, ++argv) {
     assert(max_args && "Too many arguments");
 
-    char *argv0 = safe_malloc(strlen(argv[0]) + 1);
+    char *argv0 = safe_malloc(strlen(argv[0]) + 1, get_log_fd());
     strcpy(argv0, argv[0]);
     new_args[0] = argv0;
   }
@@ -485,8 +405,8 @@ static int exec_worker(const char *arg0, char *const *argv, int file_or_path, in
 
   if (0 != retcode) {
     for (size_t i = 0; new_argv[i]; ++i)
-      safe_free(new_argv[i]);
-    safe_free(new_argv);
+      safe_free(new_argv[i], get_log_fd());
+    safe_free(new_argv, get_log_fd());
   }
 
   return retcode;

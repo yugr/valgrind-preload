@@ -6,7 +6,7 @@
 CC ?= gcc
 CPPFLAGS = -D_GNU_SOURCE
 CFLAGS = -g -fPIC -fvisibility=hidden -Wall -Wextra -Werror
-LDFLAGS = -shared
+LDFLAGS = -shared -fPIC
 LIBS = -ldl
 
 ifneq (,$(COVERAGE))
@@ -30,8 +30,10 @@ all: bin/libpregrind.so bin/pregrind
 bin/%: scripts/% Makefile
 	cp $< $@
 
-bin/libpregrind.so: bin/pregrind.o Makefile
-	$(CC) $(LDFLAGS) -o $@ $< $(LIBS)
+bin/libpregrind.so: bin/pregrind.o bin/async_safe.o Makefile
+	$(CC) $(LDFLAGS) -o $@ $(filter %.o, $^) $(LIBS)
+
+bin/%.o: src/async_safe.h src/common.h
 
 bin/%.o: src/%.c Makefile
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
