@@ -76,7 +76,7 @@ static void write_string(const char *s) {
 
 // Async-safe printf (snprintf isn't officially async-safe but should be if not using floats)
 #define Printf(fmt, ...) do { \
-    char _buf[128]; \
+    char _buf[512]; \
     snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
     write_string(_buf); \
   } while(0)
