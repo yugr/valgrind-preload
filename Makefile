@@ -32,7 +32,7 @@ bin/libpregrind.so: bin/pregrind.o Makefile
 	$(CC) $(LDFLAGS) -o $@ $< $(LIBS)
 
 bin/%.o: src/%.c Makefile
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $^
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 clean:
 	rm -f bin/*
