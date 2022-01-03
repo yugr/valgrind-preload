@@ -64,7 +64,7 @@ static int get_log_fd() {
 }
 
 // Async-safe print
-static void write_string(const char *s) {
+static void safe_puts(const char *s) {
   ssize_t written, rem = strlen(s);
   while(rem) {
     written = write(get_log_fd(), s, rem);
@@ -75,72 +75,80 @@ static void write_string(const char *s) {
 }
 
 // Async-safe printf (snprintf isn't officially async-safe but should be if not using floats)
-#define Printf(fmt, ...) do { \
+#define safe_printf(fmt, ...) do { \
     char _buf[512]; \
     snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
-    write_string(_buf); \
+    safe_puts(_buf); \
   } while(0)
 
+typedef struct {
+  size_t size;
+} MemControlBlock;
+
+#define AS_BLOCK(ptr) ((MemControlBlock *)(ptr))
+#define RAW2USER(ptr) ((void *)(AS_BLOCK(ptr) + 1))
+#define USER2RAW(ptr) ((void *)(AS_BLOCK(ptr) - 1))
+
 // Async-safe malloc (mmap(2) isn't officially async-safe but most probably is)
-static void *Malloc(size_t n) {
-  n = (n + sizeof(size_t) + PAGE_SIZE - 1) & ~(uintptr_t)(PAGE_SIZE - 1);
+static void *safe_malloc(size_t n) {
+  n = (n + sizeof(MemControlBlock) + PAGE_SIZE - 1) & ~(uintptr_t)(PAGE_SIZE - 1);
   void *ret = mmap(0, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (!ret || ret == (void *)-1) {
-    Printf(PREFIX "Malloc() failed to allocate %zd bytes: %s\n", n, sys_errlist[errno]);
+  if (!ret || ret == MAP_FAILED) {
+    safe_printf(PREFIX "safe_malloc() failed to allocate %zd bytes: %s\n", n, sys_errlist[errno]);
     abort();
   }
-  *(size_t *)ret = n;
-  return (size_t *)ret + 1;
+  AS_BLOCK(ret)->size = n;
+  return RAW2USER(ret);
 }
 
-static void Free(void *p) {
-  void *buf = (size_t *)p - 1;
-  size_t size = *(size_t *)buf;
+static void safe_free(void *p) {
+  void *buf = USER2RAW(p);
+  size_t size = AS_BLOCK(buf)->size;
   if (0 != munmap(buf, size)) {
-    Printf(PREFIX "Free() failed to unmap memory at 0x%p (size %zd)\n", p, size);
+    safe_printf(PREFIX "safe_free() failed to unmap memory at 0x%p (size %zd)\n", p, size);
     abort();
   }
 }
 
-static char *Basename(char *f) {
+static char *safe_basename(char *f) {
   char *sep = strrchr(f, '/');
   return sep ? sep + 1 : f;
 }
 
 // Not very efficient but enough for our simple usecase
-static int Fnmatch(const char *p, const char *s) {
+static int safe_fnmatch(const char *p, const char *s) {
   if(*p == 0 || *s == 0)
     return *p == *s;
 
   switch(*p) {
   case '?':
-    return *s && Fnmatch(p + 1, s + 1);
+    return *s && safe_fnmatch(p + 1, s + 1);
   case '*':
     if(p[1] == 0)
       return 1;
     else if(p[1] == '*')
-      return Fnmatch(p + 1, s);
+      return safe_fnmatch(p + 1, s);
     else {
       size_t i;
       for(i = 0; s[i]; ++i)
-        if(p[1] == s[i] && Fnmatch(p + 2, s + i + 1))
+        if(p[1] == s[i] && safe_fnmatch(p + 2, s + i + 1))
           return 1;
       return 0;
     }
   default:
-    return *p == *s && Fnmatch(p + 1, s + 1);
+    return *p == *s && safe_fnmatch(p + 1, s + 1);
   }
 
   abort();
 }
 
 // Reserve space for size and at least one trailing nullptr
-#define GET_EFFECTIVE_SIZE(size) ((size) - sizeof(size_t) - sizeof (char *))
+#define GET_EFFECTIVE_SIZE(size) ((size) - sizeof(MemControlBlock) - sizeof (char *))
 
 static char **va_list_to_argv(va_list ap, const char *arg0) {
-  void *buf = Malloc(PAGE_SIZE);
+  void *buf = safe_malloc(PAGE_SIZE >> 1);
   const char **args = (const char **)buf;
-  size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE) / sizeof(const char *);
+  size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE >> 1) / sizeof(const char *);
 
   args[0] = arg0;
   ++args;
@@ -170,7 +178,7 @@ static char *get_prog_name() {
     abort();
   }
 
-  return Basename(s);
+  return safe_basename(s);
 }
 
 static char *trim_whites(char *s) {
@@ -330,20 +338,20 @@ static void dummy() {
 }
 
 static char **init_valgrind_argv(char * const *argv) {
-  void *buf = Malloc(PAGE_SIZE);
+  void *buf = safe_malloc(PAGE_SIZE >> 1);
   const char **new_args = buf;
-  size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE) / sizeof(char *);
+  size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE >> 1) / sizeof(char *);
 
   new_args[0] = "/usr/bin/valgrind";
   ++new_args;
   --max_args;
 
   if(vg_log_path_templ) {
-    char *name = Basename(argv[0]);
+    char *name = safe_basename(argv[0]);
     size_t name_len = strlen(name);
 
     size_t templ_len = strlen(vg_log_path_templ);
-    char *out = Malloc(templ_len + name_len + 20);
+    char *out = safe_malloc(templ_len + name_len + 20);
     sprintf(out, "--log-file=%s%s.%%p", vg_log_path_templ, name);  // Valgrind understands %%p  // FIXME: snprintf
 
     new_args[0] = out;
@@ -361,7 +369,7 @@ static char **init_valgrind_argv(char * const *argv) {
   for(; argv[0]; ++new_args, --max_args, ++argv) {
     assert(max_args && "Too many arguments");
 
-    char *argv0 = Malloc(strlen(argv[0]) + 1);
+    char *argv0 = safe_malloc(strlen(argv[0]) + 1);
     strcpy(argv0, argv[0]);
     new_args[0] = argv0;
   }
@@ -388,7 +396,7 @@ static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz)
     }
 
     if(needed < 0 || (size_t)needed >= buf_sz) {
-      Printf(PREFIX "failed to find file %s in path: string too long\n", file);
+      safe_printf(PREFIX "failed to find file %s in path: string too long\n", file);
       return 0;
     }
 
@@ -411,7 +419,7 @@ static int can_instrument(const char *arg0, char *const *argv) {
   // Do not try to instrument Valgrind itself
   if(strstr(arg0, "valgrind") || strstr(argv[0], "valgrind")) {
     if(v)
-      Printf(PREFIX "not instrumenting %s: it's Valgrind!\n", arg0);
+      safe_printf(PREFIX "not instrumenting %s: it's Valgrind!\n", arg0);
     return 0;
   }
 
@@ -419,7 +427,7 @@ static int can_instrument(const char *arg0, char *const *argv) {
   if(!strchr(arg0, '/')) {
     const char *path = find_file_in_path(arg0, buf, sizeof(buf));
     if(!path) {
-      Printf(PREFIX "not instrumenting %s: failed to find file in path\n", arg0);
+      safe_printf(PREFIX "not instrumenting %s: failed to find file in path\n", arg0);
       return 0;
     }
     arg0 = path;
@@ -427,9 +435,9 @@ static int can_instrument(const char *arg0, char *const *argv) {
 
   size_t i;
   for(i = 0; i < sizeof(blacklist) / sizeof(blacklist[0]) && blacklist[i]; ++i) {
-    if(Fnmatch(blacklist[i], arg0)) {
+    if(safe_fnmatch(blacklist[i], arg0)) {
       if(v)
-        Printf(PREFIX "not instrumenting %s: blacklisted\n", arg0);
+        safe_printf(PREFIX "not instrumenting %s: blacklisted\n", arg0);
       return 0;
     }
   }
@@ -437,7 +445,7 @@ static int can_instrument(const char *arg0, char *const *argv) {
   struct stat perm;
   if(0 != stat(arg0, &perm)) {
     if(v)
-      Printf(PREFIX "stat() failed on %s: %s\n", arg0, sys_errlist[errno]);
+      safe_printf(PREFIX "stat() failed on %s: %s\n", arg0, sys_errlist[errno]);
     // Do not abort() as some packages seem to check for presense of files by trying to run them
     return 0;
   }
@@ -445,7 +453,7 @@ static int can_instrument(const char *arg0, char *const *argv) {
   // Avoid calling setuids as VG can't instrument them
   if(!i_am_root && (perm.st_mode & (S_ISUID | S_ISGID | S_ISVTX))) {
     if(v)
-      Printf(PREFIX "not instrumenting %s: setuid\n", arg0);
+      safe_printf(PREFIX "not instrumenting %s: setuid\n", arg0);
     return 0;
   }
 
@@ -462,13 +470,13 @@ static int exec_worker(const char *arg0, char *const *argv, int file_or_path, in
   char **new_argv = init_valgrind_argv(argv);
 
   if(v) {
-    write_string(PREFIX "executing: ");
+    safe_puts(PREFIX "executing: ");
     char **p = new_argv;
     for(p = new_argv; *p; ++p) {
-      write_string(*p);
-      write_string(" ");
+      safe_puts(*p);
+      safe_puts(" ");
     }
-    write_string("\n");
+    safe_puts("\n");
   }
 
   int retcode = has_envp
@@ -477,8 +485,8 @@ static int exec_worker(const char *arg0, char *const *argv, int file_or_path, in
 
   if (0 != retcode) {
     for (size_t i = 0; new_argv[i]; ++i)
-      Free(new_argv[i]);
-    Free(new_argv);
+      safe_free(new_argv[i]);
+    safe_free(new_argv);
   }
 
   return retcode;
@@ -486,7 +494,7 @@ static int exec_worker(const char *arg0, char *const *argv, int file_or_path, in
 
 EXPORT int execl(const char *path, const char *arg, ...) {
   if(v)
-    Printf(PREFIX "intercepted execl: %s\n", path);
+    safe_printf(PREFIX "intercepted execl: %s\n", path);
 
   va_list ap;
   va_start(ap, arg);
@@ -497,7 +505,7 @@ EXPORT int execl(const char *path, const char *arg, ...) {
 
 EXPORT int execlp(const char *file, const char *arg, ...) {
   if(v)
-    Printf(PREFIX "intercepted execlp: %s\n", file);
+    safe_printf(PREFIX "intercepted execlp: %s\n", file);
 
   va_list ap;
   va_start(ap, arg);
@@ -508,7 +516,7 @@ EXPORT int execlp(const char *file, const char *arg, ...) {
 
 EXPORT int execle(const char *path, const char *arg, ...) {
   if(v)
-    Printf(PREFIX "intercepted execle: %s\n", path);
+    safe_printf(PREFIX "intercepted execle: %s\n", path);
 
   va_list ap;
   va_start(ap, arg);
@@ -521,25 +529,25 @@ EXPORT int execle(const char *path, const char *arg, ...) {
 
 EXPORT int execv(const char *path, char *const argv[]) {
   if(v)
-    Printf(PREFIX "intercepted execv: %s\n", path);
+    safe_printf(PREFIX "intercepted execv: %s\n", path);
   return exec_worker(path, argv, /*file_or_path*/ 0, /*has_envp*/ 0, 0);
 }
 
 EXPORT int execve(const char *path, char *const argv[], char *const envp[]) {
   if(v)
-    Printf(PREFIX "intercepted execve: %s\n", path);
+    safe_printf(PREFIX "intercepted execve: %s\n", path);
   return exec_worker(path, argv, /*file_or_path*/ 0, /*has_envp*/ 1, envp);
 }
 
 EXPORT int execvp(const char *file, char *const argv[]) {
   if(v)
-    Printf(PREFIX "intercepted execvp: %s\n", file);
+    safe_printf(PREFIX "intercepted execvp: %s\n", file);
   return exec_worker(file, argv, /*file_or_path*/ 1, /*has_envp*/ 0, 0);
 }
 
 EXPORT int execvpe(const char *file, char *const argv[], char *const envp[]) {
   if(v)
-    Printf(PREFIX "intercepted execvpe: %s\n", file);
+    safe_printf(PREFIX "intercepted execvpe: %s\n", file);
   return exec_worker(file, argv, /*file_or_path*/ 1, /*has_envp*/ 1, envp);
 }
 
