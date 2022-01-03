@@ -6,12 +6,20 @@
  * found in the LICENSE.txt file.
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 
+#ifdef __clang__
+#define noipa optnone
+#endif
+
+int *buf;
+
+__attribute__((noipa))
+int error() {
+  return buf[1];
+}
+
 int main() {
-  if (0 == system("./child")) {
-    fprintf(stderr, "parent: child did not fail as expected\n");
-  }
-  return 0;
+  buf = (int *)malloc(1);
+  return error();
 }

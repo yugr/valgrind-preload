@@ -41,7 +41,8 @@ clean:
 	find -name \*.gcov -o -name \*.gcno -o -name \*.gcda -o -name coverage.\* | xargs rm -rf
 
 check:
-	tests/basic/run.sh
-	echo SUCCESS
+	tests/exec/run.sh
+	tests/system/run.sh
+	@echo SUCCESS
 
 .PHONY: clean all check

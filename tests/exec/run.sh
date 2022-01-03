@@ -17,7 +17,8 @@ if test -n "${GITHUB_ACTIONS:-}"; then
   set -x
 fi
 
-CFLAGS='-g -O0 -Wall -Wextra -Werror'
+RC=23
+CFLAGS="-g -O2 -Wall -Wextra -Werror -DRC=$RC"
 
 if test -n "${COVERAGE:-}"; then
   CFLAGS="$CFLAGS --coverage -DNDEBUG"
@@ -28,7 +29,6 @@ ROOT=$PWD/../..
 ${CC:-gcc} $CFLAGS parent.c -o parent
 ${CC:-gcc} $CFLAGS child.c -o child
 
-export PREGRIND_FLAGS='-q --error-exitcode=1'
+export PREGRIND_FLAGS="-q --error-exitcode=$RC"
 
-! LD_PRELOAD=$ROOT/bin/libpregrind.so ./parent >test.log 2>&1
-grep -q 'Invalid read of size 4' test.log
+LD_PRELOAD=$ROOT/bin/libpregrind.so ./parent > test.log 2>&1
