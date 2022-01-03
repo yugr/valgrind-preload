@@ -6,3 +6,8 @@ bin
 
 # Vim files
 .*.swp
+
+# Test files
+parent
+child
+test.log
