@@ -1,3 +1,6 @@
+[![License](http://img.shields.io/:license-MIT-blue.svg)](https://github.com/yugr/Localizer/blob/master/LICENSE.txt)
+[![Build Status](https://github.com/yugr/valgrind-preload/actions/workflows/ci.yml/badge.svg)](https://github.com/yugr/valgrind-preload/actions)
+[![codecov](https://codecov.io/gh/yugr/valgrind-preload/branch/master/graph/badge.svg)](https://codecov.io/gh/yugr/valgrind-preload)
 [![Total alerts](https://img.shields.io/lgtm/alerts/g/yugr/valgrind-preload.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/yugr/valgrind-preload/alerts/)
 
 # What's this?
