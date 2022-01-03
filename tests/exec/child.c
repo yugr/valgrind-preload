@@ -9,7 +9,9 @@
 #include <stdlib.h>
 
 #ifdef __clang__
-#define noipa optnone
+# define noipa optnone
+#elif __GNUC__ < 8
+# define noipa noinline,noclone
 #endif
 
 int *buf;
