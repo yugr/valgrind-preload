@@ -1,0 +1,26 @@
+name: CI
+on:
+  push:
+    paths-ignore:
+    - 'LICENSE.txt'
+    - 'README.md'
+  pull_request:
+    paths-ignore:
+    - 'LICENSE.txt'
+    - 'README.md'
+jobs:
+  Tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-18.04, ubuntu-20.04, ubuntu-latest]
+        cc: [gcc, clang]
+    runs-on: ${{ matrix.os }}
+    env:
+      CC: ${{ matrix.cc }}
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install deps
+      run: scripts/install-deps.sh
+    - name: Run tests
+      run: scripts/travis.sh

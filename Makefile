@@ -25,8 +25,8 @@ $(shell mkdir -p bin)
 
 all: bin/libpregrind.so bin/pregrind
 
-bin/pregrind: scripts/pregrind Makefile
-	cp $< $@  # TODO: install
+bin/%: scripts/% Makefile
+	cp $< $@
 
 bin/libpregrind.so: bin/pregrind.o Makefile
 	$(CC) $(LDFLAGS) -o $@ $< $(LIBS)
@@ -36,5 +36,9 @@ bin/%.o: src/%.c Makefile
 
 clean:
 	rm -f bin/*
+
+check:
+	tests/basic/run.sh
+	echo SUCCESS
 
 .PHONY: clean all
