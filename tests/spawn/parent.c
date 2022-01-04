@@ -11,26 +11,23 @@
 
 #include <unistd.h>
 #include <sys/wait.h>
+#include <spawn.h>
+
+extern char **environ;
 
 int main() {
-  int pid = fork();
-  if (0 == pid) {
-    // Child
-    execl("./child", "./child", NULL);
-    perror("parent: failed to execute child");
-    exit(1);
-  }
-  // Parent
-  if (pid < 0) {
-    perror("parent: failed to fork");
+  char *argv[] = {"./child", 0};
+  int pid;
+  if (0 != posix_spawn(&pid, "./child", NULL, NULL, argv, environ)) {
+    perror("parent: failed to spawn child");
     exit(1);
   }
   int wstatus;
   if (waitpid(pid, &wstatus, 0) < 0) {
-    perror("parent: failed to wait");
+    perror("parent: failed to wait for child");
     exit(1);
   }
-  if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != RC) {
+  if (!WIFEXITED(wstatus) && WEXITSTATUS(wstatus) != RC) {
     fprintf(stderr, "parent: child exited for different reason\n");
     exit(1);
   }

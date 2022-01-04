@@ -30,5 +30,8 @@ ${CC:-gcc} $CFLAGS child.c -o child
 
 export PREGRIND_FLAGS='-q --error-exitcode=1'
 
-! LD_PRELOAD=$ROOT/bin/libpregrind.so ./parent >test.log 2>&1
-grep -q 'Invalid read of size 4' test.log
+if ! LD_PRELOAD=$ROOT/bin/libpregrind.so ./parent >test.log 2>&1 \
+    || ! grep -q 'Invalid read of size 4' test.log; then
+  echo "system: test failed" >&2
+  cat test.log >&2
+fi
