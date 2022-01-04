@@ -48,6 +48,12 @@ void safe_free(void *p, int error_fd) {
   }
 }
 
+char *safe_strdup(const char *s, int error_fd) {
+  char *ss = safe_malloc(strlen(s) + 1, error_fd);
+  strcpy(ss, s);
+  return ss;
+}
+
 char *safe_basename(char *f) {
   char *sep = strrchr(f, '/');
   return sep ? sep + 1 : f;

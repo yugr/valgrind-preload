@@ -45,7 +45,7 @@ clean:
 check:
 	tests/exec/run.sh
 	tests/system/run.sh
-	#tests/spawn/run.sh Not supported yet
+	tests/spawn/run.sh
 	@echo SUCCESS
 
 .PHONY: clean all check

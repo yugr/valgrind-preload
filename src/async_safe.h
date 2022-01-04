@@ -32,6 +32,7 @@ typedef struct {
 
 void *safe_malloc(size_t n, int error_fd);
 void safe_free(void *p, int error_fd);
+char *safe_strdup(const char *s, int error_fd);
 
 char *safe_basename(char *f);
 

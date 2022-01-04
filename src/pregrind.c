@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
+#include <spawn.h>
 
 int (*real_execl)(const char *path, const char *arg, ...);
 int (*real_execlp)(const char *file, const char *arg, ...);
@@ -29,6 +30,14 @@ int (*real_execv)(const char *path, char *const argv[]);
 int (*real_execvp)(const char *file, char *const argv[]);
 int (*real_execve)(const char *path, char *const argv[], char *const envp[]);
 int (*real_execvpe)(const char *file, char *const argv[], char *const envp[]);
+int (*real_posix_spawn)(pid_t *pid, const char *path,
+                        const posix_spawn_file_actions_t *file_actions,
+                        const posix_spawnattr_t *attrp,
+                        char *const argv[], char *const envp[]);
+int (*real_posix_spawnp)(pid_t *pid, const char *file,
+                         const posix_spawn_file_actions_t *file_actions,
+                         const posix_spawnattr_t *attrp,
+                         char *const argv[], char *const envp[]);
 
 const char *vg_flags[128];
 const char *vg_log_path_templ;
@@ -238,6 +247,8 @@ static void maybe_init() {
   INIT_REAL(execvp);
   INIT_REAL(execve);
   INIT_REAL(execvpe);
+  INIT_REAL(posix_spawn);
+  INIT_REAL(posix_spawnp);
 
 #undef INIT_REAL
 
@@ -262,7 +273,7 @@ static char **init_valgrind_argv(char * const *argv) {
   const char **new_args = buf;
   size_t max_args = GET_EFFECTIVE_SIZE(PAGE_SIZE >> 1) / sizeof(char *);
 
-  new_args[0] = "/usr/bin/valgrind";
+  new_args[0] = safe_strdup("/usr/bin/valgrind", get_log_fd());
   ++new_args;
   --max_args;
 
@@ -281,20 +292,33 @@ static char **init_valgrind_argv(char * const *argv) {
   }
 
   const char **vg_flag;
-  for(vg_flag = vg_flags; *vg_flag; ++vg_flag, ++new_args, --max_args) {
+  for(vg_flag = vg_flags; vg_flag[0]; ++vg_flag, ++new_args, --max_args) {
     assert(max_args && "Too many flags");
-    new_args[0] = *vg_flag;
+    new_args[0] = safe_strdup(vg_flag[0], get_log_fd());
   }
 
   for(; argv[0]; ++new_args, --max_args, ++argv) {
     assert(max_args && "Too many arguments");
+    new_args[0] = safe_strdup(argv[0], get_log_fd());
+  }
 
-    char *argv0 = safe_malloc(strlen(argv[0]) + 1, get_log_fd());
-    strcpy(argv0, argv[0]);
-    new_args[0] = argv0;
+  if(v) {
+    safe_puts(PREFIX "executing: ");
+    const char **p = new_args;
+    for(p = new_args; *p; ++p) {
+      safe_puts(*p);
+      safe_puts(" ");
+    }
+    safe_puts("\n");
   }
 
   return (char **)buf;
+}
+
+static void free_valgrind_argv(char **argv) {
+  for (size_t i = 0; argv[i]; ++i)
+    safe_free(argv[i], get_log_fd());
+  safe_free(argv, get_log_fd());
 }
 
 static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz) {
@@ -389,24 +413,12 @@ static int exec_worker(const char *arg0, char *const *argv, int file_or_path, in
 
   char **new_argv = init_valgrind_argv(argv);
 
-  if(v) {
-    safe_puts(PREFIX "executing: ");
-    char **p = new_argv;
-    for(p = new_argv; *p; ++p) {
-      safe_puts(*p);
-      safe_puts(" ");
-    }
-    safe_puts("\n");
-  }
-
   int retcode = has_envp
     ? real_execve(new_argv[0], new_argv, envp)
     : real_execv(new_argv[0], new_argv);
 
   if (0 != retcode) {
-    for (size_t i = 0; new_argv[i]; ++i)
-      safe_free(new_argv[i], get_log_fd());
-    safe_free(new_argv, get_log_fd());
+    free_valgrind_argv(new_argv);
   }
 
   return retcode;
@@ -471,5 +483,35 @@ EXPORT int execvpe(const char *file, char *const argv[], char *const envp[]) {
   return exec_worker(file, argv, /*file_or_path*/ 1, /*has_envp*/ 1, envp);
 }
 
+static int spawn_worker(pid_t *pid, const char *path,
+                        const posix_spawn_file_actions_t *file_actions,
+                        const posix_spawnattr_t *attrp,
+                        char *const *argv, char *const *envp,
+                        int path_or_file) {
+  if(!can_instrument(path, argv))
+    return (path_or_file ? real_posix_spawn : real_posix_spawnp)(pid, path, file_actions, attrp, argv, envp);
+
+  char **new_argv = init_valgrind_argv(argv);
+
+  int status = real_posix_spawnp(pid, "valgrind", file_actions, attrp, new_argv, envp);
+
+  free_valgrind_argv(new_argv);
+
+  return status;
+}
+
+EXPORT int posix_spawn(pid_t *pid, const char *path,
+                       const posix_spawn_file_actions_t *file_actions,
+                       const posix_spawnattr_t *attrp,
+                       char *const argv[], char *const envp[]) {
+  return spawn_worker(pid, path, file_actions, attrp, argv, envp, 1);
+}
+
+EXPORT int posix_spawnp(pid_t *pid, const char *path,
+                        const posix_spawn_file_actions_t *file_actions,
+                        const posix_spawnattr_t *attrp,
+                        char *const argv[], char *const envp[]) {
+  return spawn_worker(pid, path, file_actions, attrp, argv, envp, 0);
+}
+
 // TODO: execlpe
-// TODO: posix_spawn, posix_spawnp
