@@ -4,6 +4,8 @@
 # found in the LICENSE.txt file.
 
 CC ?= gcc
+DESTDIR ?= /usr/local
+
 CPPFLAGS = -D_GNU_SOURCE
 CFLAGS = -g -fPIC -fvisibility=hidden -Wall -Wextra -Werror
 LDFLAGS = -shared -fPIC -Wl,--warn-common
@@ -47,10 +49,15 @@ clean:
 	rm -f bin/*
 	find -name \*.gcov -o -name \*.gcno -o -name \*.gcda -o -name coverage.\* | xargs rm -rf
 
+install:
+	mkdir -p $(DESTDIR)
+	install bin/libpregrind.so $(DESTDIR)/lib
+	install scripts/pregrind $(DESTDIR)/bin
+
 check:
 	tests/exec/run.sh
 	tests/system/run.sh
 	tests/spawn/run.sh
 	@echo SUCCESS
 
-.PHONY: clean all check FORCE
+.PHONY: clean all check install FORCE
