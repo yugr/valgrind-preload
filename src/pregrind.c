@@ -324,7 +324,7 @@ static void free_valgrind_argv(char **argv) {
 static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz) {
   const char *path = getenv("PATH");
   if(!path)
-    return 0;
+    return NULL;
 
   struct stat perm;
   do {
@@ -341,7 +341,7 @@ static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz)
 
     if(needed < 0 || (size_t)needed >= buf_sz) {
       safe_printf(PREFIX "failed to find file %s in path: string too long\n", file);
-      return 0;
+      return NULL;
     }
 
     if(0 == stat(buf, &perm))
@@ -350,7 +350,7 @@ static const char *find_file_in_path(const char *file, char *buf, size_t buf_sz)
     path = next ? next + 1 : 0;
   } while(path);
 
-  return 0;
+  return NULL;
 }
 
 static int can_instrument(const char *arg0, char *const *argv) {
