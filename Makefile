@@ -6,7 +6,7 @@
 CC ?= gcc
 CPPFLAGS = -D_GNU_SOURCE
 CFLAGS = -g -fPIC -fvisibility=hidden -Wall -Wextra -Werror
-LDFLAGS = -shared -fPIC
+LDFLAGS = -shared -fPIC -Wl,--warn-common
 LIBS = -ldl
 
 ifneq (,$(COVERAGE))
