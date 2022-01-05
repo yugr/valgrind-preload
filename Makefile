@@ -30,13 +30,18 @@ all: bin/libpregrind.so bin/pregrind
 bin/%: scripts/% Makefile
 	cp $< $@
 
-bin/libpregrind.so: bin/pregrind.o bin/async_safe.o Makefile
+bin/libpregrind.so: bin/pregrind.o bin/async_safe.o Makefile bin/FLAGS
 	$(CC) $(LDFLAGS) -o $@ $(filter %.o, $^) $(LIBS)
 
 bin/%.o: src/async_safe.h src/common.h
 
-bin/%.o: src/%.c Makefile
+bin/%.o: src/%.c Makefile bin/FLAGS
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+bin/FLAGS: FORCE
+	if test x"$(CFLAGS) $(LDFLAGS)" != x"$$(cat $@)"; then \
+		echo "$(CFLAGS) $(LDFLAGS)" > $@; \
+	fi
 
 clean:
 	rm -f bin/*
@@ -48,4 +53,4 @@ check:
 	tests/spawn/run.sh
 	@echo SUCCESS
 
-.PHONY: clean all check
+.PHONY: clean all check FORCE
