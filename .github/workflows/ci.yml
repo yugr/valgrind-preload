@@ -1,6 +1,5 @@
 # TODO:
 # - sanitizers
-# - Coverity
 
 name: CI
 on:
