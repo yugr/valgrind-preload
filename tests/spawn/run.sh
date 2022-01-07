@@ -22,6 +22,7 @@ CFLAGS="-g -O0 -Wall -Wextra -Werror -DRC=$RC"
 
 if test -n "${COVERAGE:-}"; then
   CFLAGS="$CFLAGS --coverage -DNDEBUG"
+#  CFLAGS="$CFLAGS -fprofile-dir=coverage.%p"
 fi
 
 ROOT=$PWD/../..

@@ -20,6 +20,7 @@ make "$@" check
 # Upload coverage
 if test -n "${COVERAGE:-}"; then
   # Collect coverage for DLL
+  # TODO: increase coverage by using -fprofile-dir=coverage.%p
   mv bin/*.gc[dn][ao] src
   gcov src/*.gcno
   # Collect coverage for tests
