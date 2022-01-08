@@ -22,7 +22,7 @@ CFLAGS="-g -O2 -Wall -Wextra -Werror -DRC=$RC"
 
 if test -n "${COVERAGE:-}"; then
   CFLAGS="$CFLAGS --coverage -DNDEBUG"
-#  CFLAGS="$CFLAGS -fprofile-dir=coverage.%p"
+  CFLAGS="$CFLAGS -fprofile-dir=coverage.%p"
 fi
 
 ROOT=$PWD/../..
@@ -35,4 +35,10 @@ export PREGRIND_FLAGS="-q --error-exitcode=$RC"
 if ! LD_PRELOAD=$ROOT/bin/libpregrind.so ./parent > test.log 2>&1; then
   echo "exec: test failed" >&2
   cat test.log >&2
+fi
+
+if test -n "${COVERAGE:-}"; then
+  # Merge DLL coverage from both processes
+  gcov-tool merge coverage.*
+  rm -rf coverage.*
 fi

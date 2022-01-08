@@ -13,10 +13,8 @@ LIBS = -ldl
 
 ifneq (,$(COVERAGE))
   DEBUG = 1
-	# TODO: should we use `gcov-tool merge' and then `gcov-tool merge' ?
-	# (see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47618)
   CFLAGS += --coverage -DNDEBUG
-#	CFLAGS += -fprofile-dir=coverage.%p
+  CFLAGS += -fprofile-dir=coverage.%p
   LDFLAGS += --coverage
 endif
 ifeq (,$(DEBUG))

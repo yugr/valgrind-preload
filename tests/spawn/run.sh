@@ -22,7 +22,7 @@ CFLAGS="-g -O0 -Wall -Wextra -Werror -DRC=$RC"
 
 if test -n "${COVERAGE:-}"; then
   CFLAGS="$CFLAGS --coverage -DNDEBUG"
-#  CFLAGS="$CFLAGS -fprofile-dir=coverage.%p"
+  CFLAGS="$CFLAGS -fprofile-dir=coverage.%p"
 fi
 
 ROOT=$PWD/../..
@@ -36,4 +36,10 @@ if ! LD_PRELOAD=$ROOT/bin/libpregrind.so ./parent > test.log 2>&1 \
     || ! grep -q 'Invalid read of size 4' test.log; then
   echo "spawn: test failed" >&2
   cat test.log >&2
+fi
+
+if test -n "${COVERAGE:-}"; then
+  # Merge DLL coverage from both processes
+  gcov-tool merge coverage.*
+  rm -rf coverage.*
 fi
