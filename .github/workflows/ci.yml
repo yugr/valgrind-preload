@@ -27,6 +27,18 @@ jobs:
       run: scripts/install-deps.sh
     - name: Run tests
       run: scripts/travis.sh
+  CSA:
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install deps
+      run: |
+        scripts/install-deps.sh
+        sudo apt-get install clang-tools
+    - name: Run tests
+      run: scan-build --keep-going --status-bugs make clean all
   Coverage:
     needs: Tests
     runs-on: ubuntu-latest
