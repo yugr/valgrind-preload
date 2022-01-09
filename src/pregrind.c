@@ -304,8 +304,7 @@ static char **init_valgrind_argv(char * const *argv) {
 
   if(v) {
     safe_puts(PREFIX "executing: ");
-    const char **p = new_args;
-    for(p = new_args; *p; ++p) {
+    for(const char **p = new_args; *p; ++p) {
       safe_puts(*p);
       safe_puts(" ");
     }
