@@ -16,4 +16,7 @@
 
 #define PAGE_SIZE (4 * 1024u)
 
+// sys_errlist is not declared in newer Glibc's
+extern const char *const sys_errlist[];
+
 #endif
